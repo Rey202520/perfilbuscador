@@ -30,13 +30,13 @@ jobs:
             -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
           $ANDROID_HOME/build-tools/35.0.0/apksigner sign \
             --ks debug.jks --ks-pass pass:android --key-pass pass:android \
-            --out ../perfiles.apk \
+            --out perfiles.apk \
             app/build/outputs/apk/release/app-release-unsigned.apk
 
       - uses: actions/upload-artifact@v4
         with:
           name: perfiles-apk
-          path: perfiles.apk
+          path: app/perfiles.apk
 
       - name: Release
         if: startsWith(github.ref, 'refs/tags/')

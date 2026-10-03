@@ -89,7 +89,7 @@ public class LectorService extends AccessibilityService {
         faseApertura = 0;
     }
 
-    private void copiar(Context ctx, String texto) {
+    private static void copiar(Context ctx, String texto) {
         if (ctx == null || texto == null || texto.trim().isEmpty()) {
             return;
         }

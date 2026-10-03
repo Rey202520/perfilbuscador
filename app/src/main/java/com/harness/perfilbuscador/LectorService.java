@@ -351,7 +351,8 @@ public class LectorService extends AccessibilityService {
             }
             android.graphics.Rect rr = new android.graphics.Rect();
             n.getBoundsInScreen(rr);
-            Perfil p = interpretar(ct.toString(), rr.centerX(), rr.centerY());
+            Perfil p = interpretar(ct.toString(), rr.centerX(), rr.centerY(),
+                    new ArrayList<int[]>(), 0);
             if (p != null && p.nombre.toLowerCase().contains(t)) {
                 return n;
             }
@@ -409,7 +410,10 @@ public class LectorService extends AccessibilityService {
      */
     private List<Perfil> extraer(AccessibilityNodeInfo raiz) {
         List<Perfil> lista = new ArrayList<>();
+        List<int[]> celdas = celdasDeCuadricula(raiz);
+        log("celdas de la cuadricula: " + celdas.size());
 
+        int fila = 0;
         for (AccessibilityNodeInfo n : todos(raiz)) {
             if (!n.isClickable()) {
                 continue;
@@ -420,10 +424,13 @@ public class LectorService extends AccessibilityService {
             }
             android.graphics.Rect r = new android.graphics.Rect();
             n.getBoundsInScreen(r);
-            Perfil p = interpretar(t.toString(), r.centerX(), r.centerY());
-            if (p != null) {
-                lista.add(p);
+            Perfil p = interpretar(t.toString(), r.centerX(), r.centerY(), celdas, fila);
+            if (p == null) {
+                continue;
             }
+            fila++;
+            log("perfil " + fila + ": " + p.nombre + " @ " + p.x + "," + p.y);
+            lista.add(p);
         }
         if (!lista.isEmpty()) {
             return lista;
@@ -435,10 +442,12 @@ public class LectorService extends AccessibilityService {
 
     /**
      * Convierte "277 m Online now qn piola" en distancia 277 m y nombre "qn piola".
-     * Guarda tambien el centro del nodo: con esas coordenadas basta un toque para
-     * abrir el perfil, sin volver a buscarlo.
+     *
+     * El nodo de texto de la fila viene con bounds [0,0][0,0]: la WebView no
+     * le da geometria al texto. Por eso se usan las celdas de la cuadricula, que
+     * si la tienen y siguen la retícula (y = 317, 649, 981, 1313…).
      */
-    private Perfil interpretar(String bruto, int cx, int cy) {
+    private Perfil interpretar(String bruto, int cx, int cy, List<int[]> celdas, int filaActual) {
         String s = bruto.trim();
         if (s.isEmpty()) {
             return null;
@@ -461,7 +470,46 @@ public class LectorService extends AccessibilityService {
         if (resto.isEmpty() || esRuido(resto)) {
             return null;
         }
+
+        // si el nodo no tiene geometria, usar la celda que le corresponde por orden
+        if (cx <= 0 || cy <= 0) {
+            if (celdas.isEmpty()) {
+                return new Perfil(distancia, resto);
+            }
+            int idx = Math.min(filaActual, celdas.size() - 1);
+            int[] c = celdas.get(idx);
+            return new Perfil(distancia, resto, c[0], c[1]);
+        }
         return new Perfil(distancia, resto, cx, cy);
+    }
+
+    /**
+     * Extrae las celdas de la cuadricula: View sin texto con coordenadas reales.
+     * Van en orden de pantalla, asi que su indice es la fila del perfil.
+     */
+    private List<int[]> celdasDeCuadricula(AccessibilityNodeInfo raiz) {
+        List<int[]> celdas = new ArrayList<>();
+        for (AccessibilityNodeInfo n : todos(raiz)) {
+            if (n.isClickable()) {
+                continue;
+            }
+            CharSequence t = n.getText();
+            if (t != null && !t.toString().trim().isEmpty()) {
+                continue;
+            }
+            android.graphics.Rect r = new android.graphics.Rect();
+            n.getBoundsInScreen(r);
+            if (r.isEmpty() || r.width() < 100 || r.height() < 100) {
+                continue;
+            }
+            // solo las que estan en la zona de la cuadrícula
+            if (r.top < 260 || r.top > 2200) {
+                continue;
+            }
+            celdas.add(new int[]{r.centerX(), r.centerY()});
+        }
+        celdas.sort((a, b) -> a[1] - b[1]);
+        return celdas;
     }
 
     private static final String[] ESTADOS = {

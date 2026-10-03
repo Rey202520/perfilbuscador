@@ -1,5 +1,8 @@
 package com.harness.perfilbuscador;
 
+import android.content.ClipData;
+import android.content.ClipboardManager;
+import android.content.Context;
 import android.content.Intent;
 import android.graphics.Color;
 import android.os.Bundle;
@@ -15,21 +18,22 @@ import android.widget.ScrollView;
 import android.widget.TextView;
 
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
 
 /**
  * Visor de perfiles de Open Grind: filtro en linea + palabras multiples.
  *
- * Lee lo que hay en pantalla mientras el usuario navega en Open Grind y
- * filtra. No envia mensajes ni accede a cuentas: solo muestra lo que ya se ve.
+ * Lee lo que hay en pantalla mientras el usuario navega en Open Grind y filtra.
+ * Cada fila tiene un botón que abre el chat del perfil y coloca el borrador en
+ * el campo de texto. El envío lo hace siempre la persona.
  */
 public class MainActivity extends android.app.Activity {
 
     private TextView estado;
     private TextView resumen;
     private EditText palabras;
+    private EditText borrador;
     private LinearLayout lista;
     private Button irAOpenGrind;
 
@@ -46,12 +50,9 @@ public class MainActivity extends android.app.Activity {
         raiz.setPadding(dp(14), dp(16), dp(14), dp(24));
         raiz.setBackgroundColor(Color.parseColor("#0a0a0a"));
 
-        TextView titulo = texto("Perfiles en línea", 20, Color.WHITE, true);
-        raiz.addView(titulo);
-
-        TextView sub = texto("Lee lo que ves en Open Grind y filtra. Tú eliges.", 13,
-                Color.parseColor("#8a8a8a"), false);
-        raiz.addView(sub);
+        raiz.addView(texto("Perfiles en línea", 20, Color.WHITE, true));
+        raiz.addView(texto("Lee lo que ves en Open Grind y filtra. Tú eliges.", 13,
+                Color.parseColor("#8a8a8a"), false));
 
         // ---- palabras ----
         TextView etiqueta = texto("Palabras (separadas por coma)", 12,
@@ -67,7 +68,6 @@ public class MainActivity extends android.app.Activity {
         palabras.setHintTextColor(Color.parseColor("#555555"));
         palabras.setBackgroundColor(Color.parseColor("#151515"));
         palabras.setPadding(dp(12), dp(10), dp(12), dp(10));
-        palabras.setSingleLine(false);
         raiz.addView(palabras);
 
         palabras.addTextChangedListener(new TextWatcher() {
@@ -78,14 +78,34 @@ public class MainActivity extends android.app.Activity {
             }
         });
 
+        // ---- borrador ----
+        TextView et2 = texto("Borrador para pegar en el chat", 12,
+                Color.parseColor("#8a8a8a"), false);
+        LinearLayout.LayoutParams mp2 = new LinearLayout.LayoutParams(-1, -2);
+        mp2.topMargin = dp(14);
+        et2.setLayoutParams(mp2);
+        raiz.addView(et2);
+
+        borrador = new EditText(this);
+        borrador.setHint("yo escríbeme al WhatsApp +56…");
+        borrador.setTextColor(Color.WHITE);
+        borrador.setHintTextColor(Color.parseColor("#555555"));
+        borrador.setBackgroundColor(Color.parseColor("#151515"));
+        borrador.setPadding(dp(12), dp(10), dp(12), dp(10));
+        borrador.setSingleLine(false);
+        LinearLayout.LayoutParams mp3 = new LinearLayout.LayoutParams(-1, -2);
+        mp3.bottomMargin = dp(4);
+        borrador.setLayoutParams(mp3);
+        raiz.addView(borrador);
+
         resumen = texto("", 13, Color.parseColor("#5ac8fa"), false);
         LinearLayout.LayoutParams mr = new LinearLayout.LayoutParams(-1, -2);
-        mr.topMargin = dp(12);
+        mr.topMargin = dp(10);
+        mr.bottomMargin = dp(8);
         resumen.setLayoutParams(mr);
         raiz.addView(resumen);
 
-        // ---- botón para abrir Open Grind ----
-        irAOpenGrind = boton("Abrir Open Grind", false);
+        irAOpenGrind = boton("Abrir Open Grind", true);
         irAOpenGrind.setOnClickListener(v -> {
             try {
                 startActivity(new Intent().setClassName("org.opengrind",
@@ -94,20 +114,15 @@ public class MainActivity extends android.app.Activity {
                 toast("No se encontró Open Grind");
             }
         });
-        LinearLayout.LayoutParams mb = new LinearLayout.LayoutParams(-1, -2);
-        mb.topMargin = dp(10);
-        irAOpenGrind.setLayoutParams(mb);
-        raiz.addView(irAOpenGrind);
+        raiz.addView(irAOpenGrind, new LinearLayout.LayoutParams(-1, -2));
 
-        // ---- lista ----
         lista = new LinearLayout(this);
         lista.setOrientation(LinearLayout.VERTICAL);
         ScrollView scroll = new ScrollView(this);
         scroll.addView(lista);
         raiz.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1f));
 
-        estado = texto("Esperando permiso de accesibilidad…", 13,
-                Color.parseColor("#8a8a8a"), false);
+        estado = texto("", 13, Color.parseColor("#8a8a8a"), false);
         LinearLayout.LayoutParams me = new LinearLayout.LayoutParams(-1, -2);
         me.topMargin = dp(12);
         estado.setLayoutParams(me);
@@ -124,10 +139,6 @@ public class MainActivity extends android.app.Activity {
                     aplicarFiltros();
                 });
             }
-
-            @Override
-            public void onChatVisible(String nombre) {
-            }
         };
     }
 
@@ -136,8 +147,8 @@ public class MainActivity extends android.app.Activity {
         super.onResume();
         boolean activo = enabledService();
         estado.setText(activo
-                ? "✓ Accesibilidad activa — abre Open Grind y navega"
-                : "⚠ Falta el permiso de accesibilidad");
+                ? "✓ Lector activo — abre Open Grind y navega"
+                : "⚠ Activa el lector en Ajustes → Accesibilidad");
         estado.setTextColor(Color.parseColor(activo ? "#4ade80" : "#f87171"));
     }
 
@@ -182,28 +193,52 @@ public class MainActivity extends android.app.Activity {
         LinearLayout v = new LinearLayout(this);
         v.setOrientation(LinearLayout.HORIZONTAL);
         v.setGravity(Gravity.CENTER_VERTICAL);
-        v.setPadding(dp(12), dp(11), dp(12), dp(11));
+        v.setPadding(dp(12), dp(10), dp(8), dp(10));
         v.setBackgroundColor(Color.parseColor("#151515"));
-        LinearLayout.LayoutParams mp = new LinearLayout.LayoutParams(-1, -2);
-        mp.bottomMargin = dp(6);
-        v.setLayoutParams(mp);
+        LinearLayout.LayoutParams vp = new LinearLayout.LayoutParams(-1, -2);
+        vp.bottomMargin = dp(6);
+        v.setLayoutParams(vp);
 
         LinearLayout textos = new LinearLayout(this);
         textos.setOrientation(LinearLayout.VERTICAL);
 
+        // el nombre tambien es pulsable: abre el mismo chat
         TextView nombre = texto(p.nombre, 15, Color.WHITE, true);
+        nombre.setPadding(0, dp(2), 0, dp(2));
+        nombre.setOnClickListener(vv -> abrir(p));
         textos.addView(nombre);
+
         if (!p.distancia.isEmpty()) {
             textos.addView(texto(p.distancia, 12, Color.parseColor("#8a8a8a"), false));
         }
 
-        TextView dist = texto(p.distancia.isEmpty() ? "" : p.distancia, 13,
-                Color.parseColor("#5ac8fa"), false);
-        dist.setGravity(Gravity.END | Gravity.CENTER_VERTICAL);
+        Button abrir = boton("Abrir", false);
+        abrir.setTextSize(13);
+        abrir.setPadding(dp(10), dp(6), dp(10), dp(6));
+        abrir.setOnClickListener(vv -> abrir(p));
 
         v.addView(textos, new LinearLayout.LayoutParams(0, -2, 1f));
-        v.addView(dist);
+        v.addView(abrir);
         return v;
+    }
+
+    /** Abre el chat del perfil y deja el borrador listo para pegar. */
+    private void abrir(LectorService.Perfil p) {
+        String texto = borrador.getText().toString().trim();
+        copiar(texto);
+        LectorService.abrirChat(getApplicationContext(), p.nombre, texto);
+        toast("Abriendo chat de " + p.nombre);
+    }
+
+    private void copiar(String texto) {
+        if (texto == null || texto.isEmpty()) {
+            return;
+        }
+        try {
+            ClipboardManager cm = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
+            cm.setPrimaryClip(ClipData.newPlainText("mensaje", texto));
+        } catch (Exception ignored) {
+        }
     }
 
     // ---- utilidades ----
@@ -223,7 +258,7 @@ public class MainActivity extends android.app.Activity {
         b.setText(s);
         b.setTextSize(14);
         b.setTextColor(primario ? Color.parseColor("#04202e") : Color.WHITE);
-        b.setBackgroundColor(primario ? Color.parseColor("#5ac8fa") : Color.parseColor("#151515"));
+        b.setBackgroundColor(primario ? Color.parseColor("#5ac8fa") : Color.parseColor("#1f3b47"));
         b.setAllCaps(false);
         return b;
     }

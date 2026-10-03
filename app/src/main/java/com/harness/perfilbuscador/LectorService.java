@@ -208,13 +208,14 @@ public class LectorService extends AccessibilityService {
                 + " coords=" + hayCoordenadas + " intentos=" + intentos);
         // 0) si ya sabemos donde esta la fila, un toque y listo
         if (hayCoordenadas && faseApertura == 0) {
-            GestureDescription g = toque(filaX, filaY);
-            boolean ok = dispatchGesture(g, null, null);
+            // toque largo y un segundo intento: si el primero cae en el sitio
+            // equivocado, repetimos con el nodo resuelto por texto
+            boolean ok = dispatchGesture(toque(filaX, filaY), null, null);
             log("gesto en " + filaX + "," + filaY + " -> " + ok);
             if (ok) {
                 faseApertura = 1;
                 intentos = 0;
-                H.postDelayed(this::escribirBorrador, 2500);
+                H.postDelayed(() -> repetirSiSigueEnLaLista(filaX, filaY), 2500);
                 return true;
             }
         }
@@ -233,7 +234,7 @@ public class LectorService extends AccessibilityService {
             if (tocar(fila)) {
                 faseApertura = 1;
                 intentos = 0;
-                H.postDelayed(this::escribirBorrador, 2200);
+                H.postDelayed(() -> repetirSiSigueEnLaLista(filaX, filaY), 2500);
                 return true;
             }
         }
@@ -245,6 +246,12 @@ public class LectorService extends AccessibilityService {
                 faseApertura = 0;
                 return true;
             }
+        }
+
+        // reintentar el gesto: puede que el primero haya caído antes de que la
+        // app terminara de abrir
+        if (faseApertura == 1 && hayCoordenadas) {
+            dispatchGesture(toque(filaX, filaY), null, null);
         }
 
         if (intentos < 25) {
@@ -269,6 +276,55 @@ public class LectorService extends AccessibilityService {
         return new GestureDescription.Builder()
                 .addStroke(new GestureDescription.StrokeDescription(path, 0, 60))
                 .build();
+    }
+
+    /**
+     * Si tras el toque seguimos en la lista, es que el primer toque no sirvio:
+     * se resuelve el perfil por su nombre otra vez y se toca el nodo bueno.
+     */
+    private void repetirSiSigueEnLaLista(int x, int y) {
+        AccessibilityNodeInfo raiz = obtenerRaiz();
+        if (raiz == null) {
+            return;
+        }
+        // si ya no esta la lista, el perfil abrio: escribir el borrador
+        boolean sigueLista = false;
+        for (AccessibilityNodeInfo n : todos(raiz)) {
+            CharSequence c = n.getText();
+            if (c != null && c.toString().trim().equalsIgnoreCase(String.valueOf(pendiente))) {
+                sigueLista = true;
+                break;
+            }
+        }
+        log("tras el toque sigueLista=" + sigueLista);
+
+        if (sigueLista) {
+            // el nodo de texto tiene bounds 0,0: tocar la celda de la cuadricula
+            List<int[]> celdas = celdasDeCuadricula(raiz);
+            List<Perfil> perfiles = extraer(raiz);
+            for (Perfil p : perfiles) {
+                if (p.nombre.equalsIgnoreCase(String.valueOf(pendiente)) && p.x > 0) {
+                    log("reintento en celda " + p.x + "," + p.y);
+                    dispatchGesture(toque(p.x, p.y), null, null);
+                    faseApertura = 1;
+                    H.postDelayed(this::escribirBorrador, 2500);
+                    return;
+                }
+            }
+            if (!celdas.isEmpty()) {
+                dispatchGesture(toque(celdas.get(0)[0], celdas.get(0)[1]), null, null);
+            }
+            return;
+        }
+
+        // abrio el perfil: poner el borrador
+        escribirEnCampo(raiz);
+        if (!escribirEnCampo(raiz)) {
+            H.postDelayed(this::escribirBorrador, 1500);
+        } else {
+            pendiente = null;
+            faseApertura = 0;
+        }
     }
 
     /**

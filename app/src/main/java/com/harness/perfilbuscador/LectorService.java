@@ -70,7 +70,17 @@ public class LectorService extends AccessibilityService {
      * El usuario decide: esto solo responde a un toque en una fila de su lista,
      * nunca envia nada por su cuenta.
      */
+    private static final String TAG = "PerfilBuscador";
+
+    private static void log(String m) {
+        try {
+            android.util.Log.i(TAG, m);
+        } catch (Exception ignored) {
+        }
+    }
+
     public static void abrirChat(Context ctx, String nombre, String texto, int x, int y) {
+        log("abrirChat " + nombre + " en " + x + "," + y + " borrador=" + (texto == null ? 0 : texto.length()));
         pendiente = nombre;
         borrador = texto == null ? "" : texto;
         faseApertura = 0;
@@ -194,18 +204,23 @@ public class LectorService extends AccessibilityService {
      * splash, no la lista.
      */
     private boolean intentarAbrirChat(AccessibilityNodeInfo raiz) {
+        log("intentar: pendiente=" + pendiente + " fase=" + faseApertura
+                + " coords=" + hayCoordenadas + " intentos=" + intentos);
         // 0) si ya sabemos donde esta la fila, un toque y listo
         if (hayCoordenadas && faseApertura == 0) {
             GestureDescription g = toque(filaX, filaY);
-            if (dispatchGesture(g, null, null)) {
+            boolean ok = dispatchGesture(g, null, null);
+            log("gesto en " + filaX + "," + filaY + " -> " + ok);
+            if (ok) {
                 faseApertura = 1;
                 intentos = 0;
-                H.postDelayed(this::escribirBorrador, 2200);
+                H.postDelayed(this::escribirBorrador, 2500);
                 return true;
             }
         }
 
         AccessibilityNodeInfo fila = buscarFila(raiz, pendiente);
+        log("buscarFila(" + pendiente + ") -> " + (fila != null));
 
         if (fila != null) {
             android.graphics.Rect r = new android.graphics.Rect();
@@ -293,20 +308,25 @@ public class LectorService extends AccessibilityService {
     /** Escribe el borrador en el EditText del chat. */
     private boolean escribirEnCampo(AccessibilityNodeInfo raiz) {
         if (borrador == null || borrador.trim().isEmpty()) {
+            log("sin borrador, nada que escribir");
             return true;
         }
+        int campos = 0;
         for (AccessibilityNodeInfo n : todos(raiz)) {
             String cls = n.getClassName() == null ? "" : n.getClassName().toString();
             if (!cls.contains("EditText")) {
                 continue;
             }
+            campos++;
             Bundle args = new Bundle();
             args.putCharSequence(
                     AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, borrador);
             if (n.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)) {
+                log("texto escrito en un EditText");
                 return true;
             }
         }
+        log("EditText encontrados: " + campos);
         return false;
     }
 

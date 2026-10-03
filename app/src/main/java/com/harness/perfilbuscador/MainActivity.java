@@ -16,6 +16,7 @@ import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
+import android.widget.Toast;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -227,7 +228,11 @@ public class MainActivity extends android.app.Activity {
         String texto = borrador.getText().toString().trim();
         copiar(texto);
         LectorService.abrirChat(getApplicationContext(), p.nombre, texto, p.x, p.y);
-        toast("Abriendo chat de " + p.nombre);
+        String msg = "Abriendo el chat de " + p.nombre + "…";
+        if (texto.isEmpty()) {
+            msg += "\nNo escribiste borrador: el chat abrirá vacío.";
+        }
+        Toast.makeText(this, msg, Toast.LENGTH_LONG).show();
     }
 
     private void copiar(String texto) {
@@ -268,6 +273,6 @@ public class MainActivity extends android.app.Activity {
     }
 
     private void toast(String s) {
-        android.widget.Toast.makeText(this, s, android.widget.Toast.LENGTH_SHORT).show();
+        Toast.makeText(this, s, Toast.LENGTH_SHORT).show();
     }
 }

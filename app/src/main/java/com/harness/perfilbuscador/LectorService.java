@@ -55,19 +55,6 @@ public class LectorService extends AccessibilityService {
     private static final String OPEN_GRIND = "org.opengrind";
     private static final String GRINDR = "com.grindrapp.android";
 
-    @Override
-    protected void onServiceConnected() {
-        super.onServiceConnected();
-        AccessibilityServiceInfo info = new AccessibilityServiceInfo();
-        info.eventTypes = AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED
-                | AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED;
-        info.feedbackType = AccessibilityServiceInfo.FEEDBACK_GENERIC;
-        info.flags = AccessibilityServiceInfo.FLAG_REPORT_VIEW_IDS
-                | AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS;
-        info.packageNames = new String[]{OPEN_GRIND, GRINDR};
-        setServiceInfo(info);
-    }
-
     /**
      * Pide abrir el chat de un perfil. El usuario decide: solo responde a un
      * toque en una fila de la lista, nunca por su cuenta.
@@ -123,6 +110,15 @@ public class LectorService extends AccessibilityService {
     protected void onServiceConnected() {
         super.onServiceConnected();
         instancia = this;
+        AccessibilityServiceInfo info = new AccessibilityServiceInfo();
+        info.eventTypes = AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED
+                | AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED;
+        info.feedbackType = AccessibilityServiceInfo.FEEDBACK_GENERIC;
+        info.flags = AccessibilityServiceInfo.FLAG_REPORT_VIEW_IDS
+                | AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS;
+        info.packageNames = new String[]{OPEN_GRIND, GRINDR};
+        setServiceInfo(info);
+    }
 
     public static void cancelar() {
         pendiente = null;

@@ -134,14 +134,21 @@ public class LectorService extends AccessibilityService {
 
     /** Clic en el perfil, y luego escritura del borrador. */
     private boolean intentarAbrirChat(AccessibilityNodeInfo raiz) {
-        // 1) localizar el nodo del perfil y pulsarlo
-        AccessibilityNodeInfo nodo = buscar(raiz, pendiente);
-        if (nodo != null) {
-            AccessibilityNodeInfo pulsable = pulsar(nodo);
+        // 1) localizar la fila del perfil y pulsarla directamente
+        AccessibilityNodeInfo fila = buscarFila(raiz, pendiente);
+        if (fila != null && fila.isClickable()) {
+            fila.performAction(AccessibilityNodeInfo.ACTION_CLICK);
+            faseApertura = 1;
+            H.postDelayed(this::escribirBorrador, 1800);
+            return true;
+        }
+        // si el nodo encontrado no es pulsable, subir al ancestro que lo sea
+        if (fila != null) {
+            AccessibilityNodeInfo pulsable = pulsar(fila);
             if (pulsable != null) {
                 pulsable.performAction(AccessibilityNodeInfo.ACTION_CLICK);
                 faseApertura = 1;
-                H.postDelayed(this::escribirBorrador, 1600);
+                H.postDelayed(this::escribirBorrador, 1800);
                 return true;
             }
         }
@@ -149,19 +156,19 @@ public class LectorService extends AccessibilityService {
         // 2) si ya estamos dentro del chat, escribir el borrador
         if (faseApertura > 0) {
             if (escribirEnCampo(raiz)) {
-                String quien = pendiente;
                 pendiente = null;
                 faseApertura = 0;
                 return true;
             }
             if (faseApertura < 12) {
-                faseApertura++;
+                int f = faseApertura + 1;
+                faseApertura = f;
                 H.postDelayed(() -> {
                     AccessibilityNodeInfo r = getRootInActiveWindow();
                     if (r != null) {
                         intentarAbrirChat(r);
                     }
-                }, 500);
+                }, 600);
                 return true;
             }
             pendiente = null;
@@ -200,20 +207,35 @@ public class LectorService extends AccessibilityService {
         return false;
     }
 
-    /** Busca un nodo por texto exacto o, si falla, que lo contenga. */
-    private AccessibilityNodeInfo buscar(AccessibilityNodeInfo raiz, String texto) {
+    /**
+     * Localiza la fila del perfil. Busca primero en los nodos pulsables, que son
+     * los que llevan "277 m Online now qn piola"; si no, cae a cualquier nodo
+     * cuyo texto contenga el nombre.
+     */
+    private AccessibilityNodeInfo buscarFila(AccessibilityNodeInfo raiz, String texto) {
         if (texto == null || raiz == null) {
             return null;
         }
+        String t = texto.trim().toLowerCase();
+
         for (AccessibilityNodeInfo n : todos(raiz)) {
-            CharSequence t = n.getText();
-            if (t != null && t.toString().trim().equalsIgnoreCase(texto.trim())) {
+            if (!n.isClickable()) {
+                continue;
+            }
+            Perfil p = interpretar(String.valueOf(n.getText()));
+            if (p != null && p.nombre.toLowerCase().contains(t)) {
                 return n;
             }
         }
         for (AccessibilityNodeInfo n : todos(raiz)) {
-            CharSequence t = n.getText();
-            if (t != null && t.toString().toLowerCase().contains(texto.trim().toLowerCase())) {
+            CharSequence c = n.getText();
+            if (c != null && c.toString().trim().toLowerCase().equals(t)) {
+                return n;
+            }
+        }
+        for (AccessibilityNodeInfo n : todos(raiz)) {
+            CharSequence c = n.getText();
+            if (c != null && c.toString().toLowerCase().contains(t)) {
                 return n;
             }
         }
@@ -248,8 +270,76 @@ public class LectorService extends AccessibilityService {
         return out;
     }
 
-    /** Agrupa los textos de la pantalla en perfiles usando la distancia como separador. */
+    /**
+     * Agrupa los perfiles de la pantalla.
+     *
+     * La fila completa de Open Grind es un unico nodo View con click=true y texto
+     * del tipo "277 m Online now qn piola". Ese nodo es el que hay que pulsar.
+     * Los TextView hijos ("277 m", "Online now", "qn piola") NO son pulsables,
+     * asi que ignorarlos evita duplicados.
+     */
     private List<Perfil> extraer(AccessibilityNodeInfo raiz) {
+        List<Perfil> lista = new ArrayList<>();
+
+        for (AccessibilityNodeInfo n : todos(raiz)) {
+            if (!n.isClickable()) {
+                continue;
+            }
+            CharSequence t = n.getText();
+            if (t == null) {
+                continue;
+            }
+            Perfil p = interpretar(t.toString());
+            if (p != null) {
+                lista.add(p);
+            }
+        }
+        if (!lista.isEmpty()) {
+            return lista;
+        }
+
+        // respaldo: si no hay filas pulsables, agrupar por distancia
+        return agrupar(raiz);
+    }
+
+    /** Convierte "277 m Online now qn piola" en distancia 277 m y nombre "qn piola". */
+    private Perfil interpretar(String bruto) {
+        String s = bruto.trim();
+        if (s.isEmpty()) {
+            return null;
+        }
+        int corte = s.indexOf(' ');
+        if (corte <= 0) {
+            return null;
+        }
+        String distancia = s.substring(0, corte).trim();
+        if (!distancia.matches("^\\d+(?:[.,]\\d+)?\\s*(m|km)$")) {
+            return null;
+        }
+        String resto = s.substring(corte + 1).trim();
+        for (String pre : ESTADOS) {
+            if (resto.toLowerCase().startsWith(pre)) {
+                resto = resto.substring(pre.length()).trim();
+                break;
+            }
+        }
+        if (resto.isEmpty() || esRuido(resto)) {
+            return null;
+        }
+        return new Perfil(distancia, resto);
+    }
+
+    private static final String[] ESTADOS = {
+            "Online now. Visiting ",
+            "Online now ",
+            "Online ",
+            "Visiting ",
+            "Recently active ",
+            "Active recently ",
+    };
+
+    /** Agrupado por distancia, para cuando las filas no son pulsables. */
+    private List<Perfil> agrupar(AccessibilityNodeInfo raiz) {
         List<Perfil> lista = new ArrayList<>();
         List<String> textos = new ArrayList<>();
         recolectar(raiz, textos);

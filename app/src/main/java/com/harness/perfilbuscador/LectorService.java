@@ -2,7 +2,6 @@ package com.harness.perfilbuscador;
 
 import android.accessibilityservice.AccessibilityService;
 import android.accessibilityservice.AccessibilityServiceInfo;
-import android.accessibilityservice.AccessibilityWindowInfo;
 import android.accessibilityservice.GestureDescription;
 import android.content.ClipData;
 import android.content.ClipboardManager;
@@ -14,6 +13,7 @@ import android.os.Handler;
 import android.os.Looper;
 import android.view.accessibility.AccessibilityEvent;
 import android.view.accessibility.AccessibilityNodeInfo;
+import android.view.accessibility.AccessibilityWindowInfo;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -94,7 +94,7 @@ public class LectorService extends AccessibilityService {
         }, 250);
         // segundo intento: por si la app aun no estaba lista
         H.postDelayed(() -> {
-            AccessibilityService s = instancia;
+            LectorService s = instancia;
             if (s != null && hayCoordenadas) {
                 AccessibilityNodeInfo r = s.obtenerRaiz();
                 if (r != null) {
@@ -325,7 +325,13 @@ public class LectorService extends AccessibilityService {
             if (!n.isClickable()) {
                 continue;
             }
-            Perfil p = interpretar(String.valueOf(n.getText()));
+            CharSequence ct = n.getText();
+            if (ct == null) {
+                continue;
+            }
+            android.graphics.Rect rr = new android.graphics.Rect();
+            n.getBoundsInScreen(rr);
+            Perfil p = interpretar(ct.toString(), rr.centerX(), rr.centerY());
             if (p != null && p.nombre.toLowerCase().contains(t)) {
                 return n;
             }

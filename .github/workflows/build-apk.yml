@@ -12,16 +12,13 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
 
       - name: Build release APK
-        run: |
-          cd app
-          gradle assembleRelease --no-daemon
+        run: cd app && gradle assembleRelease --no-daemon
 
       - name: Firmar
         run: |
@@ -32,11 +29,12 @@ jobs:
             --ks debug.jks --ks-pass pass:android --key-pass pass:android \
             --out perfiles.apk \
             app/build/outputs/apk/release/app-release-unsigned.apk
+          ls -la perfiles.apk
 
       - uses: actions/upload-artifact@v4
         with:
           name: perfiles-apk
-          path: app/perfiles.apk
+          path: perfiles.apk
 
       - name: Release
         if: startsWith(github.ref, 'refs/tags/')

@@ -1,42 +1,30 @@
 name: Build APK
 
 on:
+  workflow_dispatch:
   push:
     tags: ['v*']
-  workflow_dispatch:
-    inputs:
-      tag:
-        description: 'Etiqueta para compilar (v1.0)'
-        required: false
-        default: ''
 
 jobs:
   build:
     runs-on: ubuntu-latest
     permissions:
       contents: write
-
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup Java 17
-        uses: actions/setup-java@v4
+      - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
 
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v4
-
       - name: Build release APK
         run: |
           cd app
-          chmod +x gradlew
-          ./gradlew assembleRelease --no-daemon
+          gradle assembleRelease --no-daemon
 
-      - name: Sign with debug key
+      - name: Firmar
         run: |
-          cd app
           keytool -genkeypair -v -keystore debug.jks -storepass android \
             -keypass android -alias androiddebugkey -keyalg RSA -keysize 2048 \
             -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
@@ -45,13 +33,12 @@ jobs:
             --out ../perfiles.apk \
             app/build/outputs/apk/release/app-release-unsigned.apk
 
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
           name: perfiles-apk
           path: perfiles.apk
 
-      - name: Publicar en el release
+      - name: Release
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:

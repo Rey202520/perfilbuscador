@@ -226,7 +226,7 @@ public class MainActivity extends android.app.Activity {
     private void abrir(LectorService.Perfil p) {
         String texto = borrador.getText().toString().trim();
         copiar(texto);
-        LectorService.abrirChat(getApplicationContext(), p.nombre, texto);
+        LectorService.abrirChat(getApplicationContext(), p.nombre, texto, p.x, p.y);
         toast("Abriendo chat de " + p.nombre);
     }
 

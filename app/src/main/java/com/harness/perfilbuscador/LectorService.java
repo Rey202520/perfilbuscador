@@ -2,10 +2,13 @@ package com.harness.perfilbuscador;
 
 import android.accessibilityservice.AccessibilityService;
 import android.accessibilityservice.AccessibilityServiceInfo;
+import android.accessibilityservice.AccessibilityWindowInfo;
+import android.accessibilityservice.GestureDescription;
 import android.content.ClipData;
 import android.content.ClipboardManager;
 import android.content.Context;
 import android.content.Intent;
+import android.graphics.Path;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
@@ -39,6 +42,12 @@ public class LectorService extends AccessibilityService {
     private static String borrador = "";
     /** Cuántos reintentos llevamos esperando a que se abra el chat. */
     private static int faseApertura = 0;
+    /** Coordenadas ya conocidas de la fila, para un toque directo. */
+    private static int filaX;
+    private static int filaY;
+    private static boolean hayCoordenadas;
+    /** Reintentos mientras se busca la fila del perfil. */
+    private static int intentos = 0;
 
     private long ultimaLectura = 0;
     private static final long INTERVALO = 900;
@@ -64,9 +73,24 @@ public class LectorService extends AccessibilityService {
      * toque en una fila de la lista, nunca por su cuenta.
      */
     public static void abrirChat(Context ctx, String nombre, String texto) {
+        abrirChat(ctx, nombre, texto, 0, 0);
+    }
+
+    /**
+     * Abre el chat de un perfil ya visto en pantalla. Con las coordenadas de la
+     * fila no hace falta volver a buscarlo: se abre la app y se toca.
+     *
+     * El usuario decide: esto solo responde a un toque en una fila de su lista,
+     * nunca envia nada por su cuenta.
+     */
+    public static void abrirChat(Context ctx, String nombre, String texto, int x, int y) {
         pendiente = nombre;
         borrador = texto == null ? "" : texto;
         faseApertura = 0;
+        intentos = 0;
+        hayCoordenadas = x > 0 && y > 0;
+        filaX = x;
+        filaY = y;
         if (ctx == null) {
             return;
         }
@@ -81,12 +105,30 @@ public class LectorService extends AccessibilityService {
             } catch (Exception ignored) {
             }
         }, 250);
+        // segundo intento: por si la app aun no estaba lista
+        H.postDelayed(() -> {
+            AccessibilityService s = instancia;
+            if (s != null && hayCoordenadas) {
+                AccessibilityNodeInfo r = s.obtenerRaiz();
+                if (r != null) {
+                    s.intentarAbrirChat(r);
+                }
+            }
+        }, 1800);
     }
+
+    private static LectorService instancia;
+
+    @Override
+    protected void onServiceConnected() {
+        super.onServiceConnected();
+        instancia = this;
 
     public static void cancelar() {
         pendiente = null;
         borrador = "";
         faseApertura = 0;
+        hayCoordenadas = false;
     }
 
     private static void copiar(Context ctx, String texto) {
@@ -108,23 +150,22 @@ public class LectorService extends AccessibilityService {
             return;
         }
 
+        AccessibilityNodeInfo raiz = obtenerRaiz();
+        if (raiz == null) {
+            return;
+        }
+
+        // Si hay una peticion pendiente, abrir el chat tiene prioridad
+        if (pendiente != null) {
+            intentarAbrirChat(raiz);
+            return;
+        }
+
         long ahora = System.currentTimeMillis();
         if (ahora - ultimaLectura < INTERVALO) {
             return;
         }
         ultimaLectura = ahora;
-
-        AccessibilityNodeInfo raiz = getRootInActiveWindow();
-        if (raiz == null) {
-            return;
-        }
-
-        // Si hay una peticion pendiente,Gift prioridad: abrir el chat.
-        if (pendiente != null) {
-            if (intentarAbrirChat(raiz)) {
-                return;
-            }
-        }
 
         List<Perfil> perfiles = extraer(raiz);
         if (escucha != null && !perfiles.isEmpty()) {
@@ -132,49 +173,115 @@ public class LectorService extends AccessibilityService {
         }
     }
 
-    /** Clic en el perfil, y luego escritura del borrador. */
-    private boolean intentarAbrirChat(AccessibilityNodeInfo raiz) {
-        // 1) localizar la fila del perfil y pulsarla directamente
-        AccessibilityNodeInfo fila = buscarFila(raiz, pendiente);
-        if (fila != null && fila.isClickable()) {
-            fila.performAction(AccessibilityNodeInfo.ACTION_CLICK);
-            faseApertura = 1;
-            H.postDelayed(this::escribirBorrador, 1800);
-            return true;
+    /**
+     * Raíz de la ventana activa. getRootInActiveWindow() devuelve a veces la
+     * ventana equivocada cuando hay WebView, así que se recorren todas.
+     */
+    private AccessibilityNodeInfo obtenerRaiz() {
+        AccessibilityNodeInfo r = getRootInActiveWindow();
+        if (r != null) {
+            return r;
         }
-        // si el nodo encontrado no es pulsable, subir al ancestro que lo sea
-        if (fila != null) {
-            AccessibilityNodeInfo pulsable = pulsar(fila);
-            if (pulsable != null) {
-                pulsable.performAction(AccessibilityNodeInfo.ACTION_CLICK);
+        List<AccessibilityWindowInfo> ventanas = getWindows();
+        for (AccessibilityWindowInfo w : ventanas) {
+            AccessibilityNodeInfo n = w.getRoot();
+            if (n != null) {
+                return n;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Clic en el perfil y escritura del borrador. Si el perfil aun no esta en
+     * pantalla, se reintenta: Open Grind tarda en cargar y al principio sale el
+     * splash, no la lista.
+     */
+    private boolean intentarAbrirChat(AccessibilityNodeInfo raiz) {
+        // 0) si ya sabemos donde esta la fila, un toque y listo
+        if (hayCoordenadas && faseApertura == 0) {
+            GestureDescription g = toque(filaX, filaY);
+            if (dispatchGesture(g, null, null)) {
                 faseApertura = 1;
-                H.postDelayed(this::escribirBorrador, 1800);
+                intentos = 0;
+                H.postDelayed(this::escribirBorrador, 2200);
                 return true;
             }
         }
 
-        // 2) si ya estamos dentro del chat, escribir el borrador
+        AccessibilityNodeInfo fila = buscarFila(raiz, pendiente);
+
+        if (fila != null) {
+            android.graphics.Rect r = new android.graphics.Rect();
+            fila.getBoundsInScreen(r);
+            if (!r.isEmpty()) {
+                hayCoordenadas = true;
+                filaX = r.centerX();
+                filaY = r.centerY();
+            }
+            if (tocar(fila)) {
+                faseApertura = 1;
+                intentos = 0;
+                H.postDelayed(this::escribirBorrador, 2200);
+                return true;
+            }
+        }
+
+        // dentro del chat: escribir el borrador
         if (faseApertura > 0) {
             if (escribirEnCampo(raiz)) {
                 pendiente = null;
                 faseApertura = 0;
                 return true;
             }
-            if (faseApertura < 12) {
-                int f = faseApertura + 1;
-                faseApertura = f;
-                H.postDelayed(() -> {
-                    AccessibilityNodeInfo r = getRootInActiveWindow();
-                    if (r != null) {
-                        intentarAbrirChat(r);
-                    }
-                }, 600);
-                return true;
-            }
+        }
+
+        if (intentos < 25) {
+            intentos++;
+            H.postDelayed(() -> {
+                AccessibilityNodeInfo r = obtenerRaiz();
+                if (r != null) {
+                    intentarAbrirChat(r);
+                }
+            }, 500);
+        } else {
             pendiente = null;
             faseApertura = 0;
         }
         return false;
+    }
+
+    /** Gesto de toque en un punto. */
+    private GestureDescription toque(int x, int y) {
+        Path path = new Path();
+        path.moveTo(x, y);
+        return new GestureDescription.Builder()
+                .addStroke(new GestureDescription.StrokeDescription(path, 0, 60))
+                .build();
+    }
+
+    /**
+     * Toca un nodo. Primero usa la acción de accesibilidad; si no surte efecto
+     * —que es lo que pasa con los nodos virtuales de WebView— hace un gesto
+     * táctil en su centro, que es lo que ve la persona.
+     */
+    private boolean tocar(AccessibilityNodeInfo nodo) {
+        AccessibilityNodeInfo pulsable = pulsar(nodo);
+        if (pulsable != null) {
+            if (pulsable.performAction(AccessibilityNodeInfo.ACTION_CLICK)) {
+                return true;
+            }
+        }
+        if (nodo.performAction(AccessibilityNodeInfo.ACTION_CLICK)) {
+            return true;
+        }
+
+        android.graphics.Rect r = new android.graphics.Rect();
+        nodo.getBoundsInScreen(r);
+        if (r.isEmpty()) {
+            return false;
+        }
+        return dispatchGesture(toque(r.centerX(), r.centerY()), null, null);
     }
 
     private void escribirBorrador() {
@@ -289,7 +396,9 @@ public class LectorService extends AccessibilityService {
             if (t == null) {
                 continue;
             }
-            Perfil p = interpretar(t.toString());
+            android.graphics.Rect r = new android.graphics.Rect();
+            n.getBoundsInScreen(r);
+            Perfil p = interpretar(t.toString(), r.centerX(), r.centerY());
             if (p != null) {
                 lista.add(p);
             }
@@ -302,8 +411,12 @@ public class LectorService extends AccessibilityService {
         return agrupar(raiz);
     }
 
-    /** Convierte "277 m Online now qn piola" en distancia 277 m y nombre "qn piola". */
-    private Perfil interpretar(String bruto) {
+    /**
+     * Convierte "277 m Online now qn piola" en distancia 277 m y nombre "qn piola".
+     * Guarda tambien el centro del nodo: con esas coordenadas basta un toque para
+     * abrir el perfil, sin volver a buscarlo.
+     */
+    private Perfil interpretar(String bruto, int cx, int cy) {
         String s = bruto.trim();
         if (s.isEmpty()) {
             return null;
@@ -326,7 +439,7 @@ public class LectorService extends AccessibilityService {
         if (resto.isEmpty() || esRuido(resto)) {
             return null;
         }
-        return new Perfil(distancia, resto);
+        return new Perfil(distancia, resto, cx, cy);
     }
 
     private static final String[] ESTADOS = {
@@ -424,10 +537,19 @@ public class LectorService extends AccessibilityService {
     public static class Perfil {
         public final String distancia;
         public final String nombre;
+        /** Centro de la fila en pantalla, para poder tocarla sin accesibilidad. */
+        public final int x;
+        public final int y;
 
         public Perfil(String distancia, String nombre) {
+            this(distancia, nombre, 0, 0);
+        }
+
+        public Perfil(String distancia, String nombre, int x, int y) {
             this.distancia = distancia == null ? "" : distancia;
             this.nombre = nombre;
+            this.x = x;
+            this.y = y;
         }
 
         public boolean coincide(List<String> palabras) {

@@ -1,14 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    package="com.harness.perfilbuscador"
-    android:versionCode="1"
-    android:versionName="1.0">
+    package="com.harness.perfilbuscador">
 
     <uses-permission android:name="android.permission.INTERNET" />
 
     <application
         android:label="Perfiles"
-        android:icon="@mipmap/ic"
         android:theme="@android:style/Theme.Material.NoActionBar">
 
         <activity

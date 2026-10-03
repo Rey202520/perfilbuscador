@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Perfiles</string>
+    <string name="descripcion_servicio">Lee los nombres y distancias que se ven en pantalla de Open Grind para filtrarlos. No accede a cuentas ni envía mensajes.</string>
+</resources>

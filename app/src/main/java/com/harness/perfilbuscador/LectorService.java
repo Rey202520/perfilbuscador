@@ -92,6 +92,16 @@ public class LectorService extends AccessibilityService {
      */
     private static final String TAG = "PerfilBuscador";
 
+    private static void logArchivo(String m) {
+        try {
+            java.io.File f = new java.io.File(android.os.Environment.getExternalStorageDirectory(), "perfilbuscador.log");
+            java.io.FileWriter fw = new java.io.FileWriter(f, true);
+            fw.write(java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.US).format(new java.util.Date()) + " " + m + "\n");
+            fw.close();
+        } catch (Exception ignored) {
+        }
+    }
+
     private static void log(String m) {
         try {
             android.util.Log.i(TAG, m);
@@ -136,8 +146,14 @@ public class LectorService extends AccessibilityService {
 
     public static void abrirPerfil(Context ctx, String nombre, int x, int y) {
         log("abrirPerfil " + nombre + " en " + x + "," + y);
+        logArchivo("abrirPerfil " + nombre + " en " + x + "," + y);
         if (ctx == null) {
             return;
+        }
+        // Mostrar toast para confirmar que se ejecuta
+        try {
+            android.widget.Toast.makeText(ctx, "Abriendo perfil: " + nombre, android.widget.Toast.LENGTH_SHORT).show();
+        } catch (Exception ignored) {
         }
         // Abrir Open Grind primero
         H.postDelayed(() -> {
@@ -147,7 +163,9 @@ public class LectorService extends AccessibilityService {
                 i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK
                         | Intent.FLAG_ACTIVITY_REORDER_TO_FRONT);
                 ctx.startActivity(i);
-            } catch (Exception ignored) {
+                logArchivo("Open Grind abierto");
+            } catch (Exception e) {
+                logArchivo("Error al abrir Open Grind: " + e.getMessage());
             }
         }, 300);
 

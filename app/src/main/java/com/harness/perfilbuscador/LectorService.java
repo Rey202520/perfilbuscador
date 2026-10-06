@@ -169,6 +169,12 @@ public class LectorService extends AccessibilityService {
         notificarAuto();
     }
 
+    public static void setAutoEstatico(boolean activo) {
+        if (instancia != null) {
+            instancia.setAutoActivo(activo);
+        }
+    }
+
     public boolean isAutoActivo() {
         return autoActivo;
     }

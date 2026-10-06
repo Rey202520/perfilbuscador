@@ -139,7 +139,7 @@ public class LectorService extends AccessibilityService {
         if (ctx == null) {
             return;
         }
-        boolean hayCoords = x > 0 && y > 0;
+        // Abrir Open Grind primero
         H.postDelayed(() -> {
             try {
                 Intent i = new Intent();
@@ -149,8 +149,9 @@ public class LectorService extends AccessibilityService {
                 ctx.startActivity(i);
             } catch (Exception ignored) {
             }
-        }, 250);
-        // Segundo intento: tocar el perfil una vez abierto
+        }, 300);
+
+        // Reintentos: a veces Open Grind tarda en dejar la lista lista
         H.postDelayed(() -> {
             LectorService s = instancia;
             if (s == null) {
@@ -161,18 +162,56 @@ public class LectorService extends AccessibilityService {
                 return;
             }
             try {
-                if (hayCoords) {
-                    s.dispatchGesture(s.toque(x, y), null, null);
-                } else {
-                    AccessibilityNodeInfo fila = s.buscarFila(r, nombre);
-                    if (fila != null) {
-                        s.tocar(fila);
+                AccessibilityNodeInfo nodo = s.buscarNodoPorTexto(r, nombre);
+                if (nodo != null) {
+                    android.graphics.Rect bounds = new android.graphics.Rect();
+                    nodo.getBoundsInScreen(bounds);
+                    if (!bounds.isEmpty()) {
+                        boolean ok = s.dispatchGesture(
+                                s.toque(bounds.centerX(), bounds.centerY()), null, null);
+                        log("gesto directo en " + bounds.centerX() + ","
+                                + bounds.centerY() + " -> " + ok);
+                    } else {
+                        AccessibilityNodeInfo clickable = s.buscarPadreClickable(nodo);
+                        if (clickable != null) {
+                            s.tocar(clickable);
+                        }
+                    }
+                } else if (x > 0 && y > 0) {
+                    boolean ok = s.dispatchGesture(s.toque(x, y), null, null);
+                    log("gesto fallback en " + x + "," + y + " -> " + ok);
+                }
+            } finally {
+                r.recycle();
+            }
+        }, 1200);
+
+        // Segundo intento por si la app aun no estaba lista
+        H.postDelayed(() -> {
+            LectorService s = instancia;
+            if (s == null) {
+                return;
+            }
+            AccessibilityNodeInfo r = s.obtenerRaiz();
+            if (r == null) {
+                return;
+            }
+            try {
+                AccessibilityNodeInfo nodo = s.buscarNodoPorTexto(r, nombre);
+                if (nodo != null) {
+                    android.graphics.Rect bounds = new android.graphics.Rect();
+                    nodo.getBoundsInScreen(bounds);
+                    if (!bounds.isEmpty()) {
+                        boolean ok = s.dispatchGesture(
+                                s.toque(bounds.centerX(), bounds.centerY()), null, null);
+                        log("gesto reintento en " + bounds.centerX() + ","
+                                + bounds.centerY() + " -> " + ok);
                     }
                 }
             } finally {
                 r.recycle();
             }
-        }, 900);
+        }, 2500);
     }
 
     private static LectorService instancia;
@@ -491,6 +530,32 @@ public class LectorService extends AccessibilityService {
             return false;
         }
         return dispatchGesture(toque(r.centerX(), r.centerY()), null, null);
+    }
+
+    private AccessibilityNodeInfo buscarNodoPorTexto(AccessibilityNodeInfo raiz, String texto) {
+        if (texto == null || texto.isEmpty()) {
+            return null;
+        }
+        String objetivo = texto.trim().toLowerCase();
+        List<AccessibilityNodeInfo> todos = todos(raiz);
+        for (AccessibilityNodeInfo n : todos) {
+            CharSequence c = n.getText();
+            if (c != null && c.toString().toLowerCase().contains(objetivo)) {
+                return n;
+            }
+        }
+        return null;
+    }
+
+    private AccessibilityNodeInfo buscarPadreClickable(AccessibilityNodeInfo nodo) {
+        AccessibilityNodeInfo p = nodo.getParent();
+        while (p != null) {
+            if (p.isClickable()) {
+                return p;
+            }
+            p = p.getParent();
+        }
+        return null;
     }
 
     private void escribirBorrador() {

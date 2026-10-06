@@ -343,15 +343,10 @@ public class MainActivity extends android.app.Activity {
         return v;
     }
 
-    /** Abre el chat del perfil y deja el borrador listo para pegar. */
+    /** Abre el perfil en Open Grind. El chat se maneja desde la misma app. */
     private void abrir(LectorService.Perfil p) {
-        String texto = borrador.getText().toString().trim();
-        copiar(texto);
-        LectorService.abrirChat(getApplicationContext(), p.nombre, texto, p.x, p.y);
-        String msg = "Abriendo el chat de " + p.nombre + "…";
-        if (texto.isEmpty()) {
-            msg += "\nNo escribiste borrador: el chat abrirá vacío.";
-        }
+        LectorService.abrirPerfil(getApplicationContext(), p.nombre, p.x, p.y);
+        String msg = "Abriendo perfil de " + p.nombre + "…";
         Toast.makeText(this, msg, Toast.LENGTH_LONG).show();
     }
 

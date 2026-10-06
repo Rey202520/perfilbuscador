@@ -30,6 +30,7 @@ public class LectorService extends AccessibilityService {
 
     public interface Escucha {
         void onPerfiles(List<Perfil> perfiles);
+        void onAutoBrowse(boolean activo, int swipes);
     }
 
     public static Escucha escucha;
@@ -54,6 +55,25 @@ public class LectorService extends AccessibilityService {
 
     private static final String OPEN_GRIND = "org.opengrind";
     private static final String GRINDR = "com.grindrapp.android";
+
+    private static final int SWIPE_DURATION = 120;
+    private static final long SWIPE_DELAY = 650;
+    private static final int MAX_SWIPES = 80;
+    private static final String FILTRO_FIN = "Fresh"; // aparece al llegar al final
+
+    private boolean autoActivo = false;
+    private int autoSwipes = 0;
+    private Handler autoH = new Handler(Looper.getMainLooper());
+    private Runnable autoRunnable = new Runnable() {
+        @Override public void run() { if (autoActivo) hacerSwipe(); }
+    };
+
+    private void iniciarAutoSiCorresponde() {
+        if (autoActivo) {
+            autoH.removeCallbacksAndMessages(null);
+            autoH.post(autoRunnable);
+        }
+    }
 
     /**
      * Pide abrir el chat de un perfil. El usuario decide: solo responde a un
@@ -137,6 +157,77 @@ public class LectorService extends AccessibilityService {
         hayCoordenadas = false;
     }
 
+    public void setAutoActivo(boolean activo) {
+        autoActivo = activo;
+        autoSwipes = 0;
+        if (activo) {
+            autoH.removeCallbacksAndMessages(null);
+            autoH.post(autoRunnable);
+        } else {
+            autoH.removeCallbacksAndMessages(null);
+        }
+        notificarAuto();
+    }
+
+    public boolean isAutoActivo() {
+        return autoActivo;
+    }
+
+    private void notificarAuto() {
+        if (escucha != null) {
+            escucha.onAutoBrowse(autoActivo, autoSwipes);
+        }
+    }
+
+    private void hacerSwipe() {
+        if (!autoActivo) {
+            return;
+        }
+        if (autoSwipes >= MAX_SWIPES) {
+            setAutoActivo(false);
+            return;
+        }
+        AccessibilityNodeInfo raiz = getRootInActiveWindow();
+        if (raiz == null) {
+            autoH.postDelayed(autoRunnable, SWIPE_DELAY);
+            return;
+        }
+        boolean llegamosAlFinal = yaLlegoAlFinal(raiz);
+        if (llegamosAlFinal) {
+            setAutoActivo(false);
+            raiz.recycle();
+            return;
+        }
+        Path p = new Path();
+        p.moveTo(540, 1700);
+        p.lineTo(540, 300);
+        dispatchGesture(new GestureDescription.Builder()
+                .addStroke(new GestureDescription.StrokeDescription(p, 0, SWIPE_DURATION))
+                .build(), null, null);
+        autoSwipes++;
+        notificarAuto();
+        raiz.recycle();
+        autoH.postDelayed(autoRunnable, SWIPE_DELAY);
+    }
+
+    private boolean yaLlegoAlFinal(AccessibilityNodeInfo raiz) {
+        StringBuilder sb = new StringBuilder();
+        recolectar(raiz, sb);
+        return sb.toString().toLowerCase().contains(FILTRO_FIN.toLowerCase());
+    }
+
+    private void recolectar(AccessibilityNodeInfo nodo, StringBuilder salida) {
+        for (AccessibilityNodeInfo n : todos(nodo)) {
+            CharSequence t = n.getText();
+            if (t != null) {
+                String s = t.toString().trim();
+                if (!s.isEmpty()) {
+                    salida.append(s).append(' ');
+                }
+            }
+        }
+    }
+
     private static void copiar(Context ctx, String texto) {
         if (ctx == null || texto == null || texto.trim().isEmpty()) {
             return;
@@ -161,9 +252,13 @@ public class LectorService extends AccessibilityService {
             return;
         }
 
-        // Si hay una peticion pendiente, abrir el chat tiene prioridad
         if (pendiente != null) {
             intentarAbrirChat(raiz);
+            return;
+        }
+
+        if (autoActivo) {
+            hacerSwipe();
             return;
         }
 

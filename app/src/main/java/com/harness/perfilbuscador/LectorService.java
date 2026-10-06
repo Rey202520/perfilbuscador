@@ -152,66 +152,44 @@ public class LectorService extends AccessibilityService {
         }, 300);
 
         // Reintentos: a veces Open Grind tarda en dejar la lista lista
-        H.postDelayed(() -> {
-            LectorService s = instancia;
-            if (s == null) {
-                return;
-            }
-            AccessibilityNodeInfo r = s.obtenerRaiz();
-            if (r == null) {
-                return;
-            }
-            try {
-                AccessibilityNodeInfo nodo = s.buscarNodoPorTexto(r, nombre);
-                if (nodo != null) {
-                    android.graphics.Rect bounds = new android.graphics.Rect();
-                    nodo.getBoundsInScreen(bounds);
-                    if (!bounds.isEmpty()) {
-                        boolean ok = s.dispatchGesture(
-                                s.toque(bounds.centerX(), bounds.centerY()), null, null);
-                        log("gesto directo en " + bounds.centerX() + ","
-                                + bounds.centerY() + " -> " + ok);
-                    } else {
-                        AccessibilityNodeInfo clickable = s.buscarPadreClickable(nodo);
-                        if (clickable != null) {
-                            s.tocar(clickable);
+        long[] delays = {1200, 1800, 2600, 3400, 4200};
+        for (int i = 0; i < delays.length; i++) {
+            long delay = delays[i];
+            H.postDelayed(() -> {
+                LectorService s = instancia;
+                if (s == null) {
+                    return;
+                }
+                AccessibilityNodeInfo r = s.obtenerRaiz();
+                if (r == null) {
+                    return;
+                }
+                try {
+                    AccessibilityNodeInfo nodo = s.buscarNodoPorTexto(r, nombre);
+                    if (nodo != null) {
+                        android.graphics.Rect bounds = new android.graphics.Rect();
+                        nodo.getBoundsInScreen(bounds);
+                        if (!bounds.isEmpty()) {
+                            boolean click = s.tocar(nodo);
+                            log("intento " + delay + " click=" + click
+                                    + " bounds=" + bounds.centerX() + ","
+                                    + bounds.centerY());
+                        } else {
+                            AccessibilityNodeInfo clickable = s.buscarPadreClickable(nodo);
+                            if (clickable != null) {
+                                boolean ok = s.tocar(clickable);
+                                log("intento " + delay + " padre clickable=" + ok);
+                            }
                         }
+                    } else if (x > 0 && y > 0) {
+                        boolean ok = s.dispatchGesture(s.toque(x, y), null, null);
+                        log("intento " + delay + " gesto fallback=" + ok);
                     }
-                } else if (x > 0 && y > 0) {
-                    boolean ok = s.dispatchGesture(s.toque(x, y), null, null);
-                    log("gesto fallback en " + x + "," + y + " -> " + ok);
+                } finally {
+                    r.recycle();
                 }
-            } finally {
-                r.recycle();
-            }
-        }, 1200);
-
-        // Segundo intento por si la app aun no estaba lista
-        H.postDelayed(() -> {
-            LectorService s = instancia;
-            if (s == null) {
-                return;
-            }
-            AccessibilityNodeInfo r = s.obtenerRaiz();
-            if (r == null) {
-                return;
-            }
-            try {
-                AccessibilityNodeInfo nodo = s.buscarNodoPorTexto(r, nombre);
-                if (nodo != null) {
-                    android.graphics.Rect bounds = new android.graphics.Rect();
-                    nodo.getBoundsInScreen(bounds);
-                    if (!bounds.isEmpty()) {
-                        boolean ok = s.dispatchGesture(
-                                s.toque(bounds.centerX(), bounds.centerY()), null, null);
-                        log("gesto reintento en " + bounds.centerX() + ","
-                                + bounds.centerY() + " -> " + ok);
-                    }
-                }
-            } finally {
-                r.recycle();
-            }
-        }, 2500);
+            }, delay);
+        }
     }
 
     private static LectorService instancia;

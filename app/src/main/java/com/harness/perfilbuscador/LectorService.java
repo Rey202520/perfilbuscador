@@ -175,6 +175,10 @@ public class LectorService extends AccessibilityService {
         }
     }
 
+    public static boolean isAutoActivo() {
+        return instancia != null && instancia.autoActivo;
+    }
+
     public boolean isAutoActivo() {
         return autoActivo;
     }

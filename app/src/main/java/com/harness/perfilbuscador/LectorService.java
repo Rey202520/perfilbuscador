@@ -134,6 +134,47 @@ public class LectorService extends AccessibilityService {
         }, 1800);
     }
 
+    public static void abrirPerfil(Context ctx, String nombre, int x, int y) {
+        log("abrirPerfil " + nombre + " en " + x + "," + y);
+        if (ctx == null) {
+            return;
+        }
+        boolean hayCoords = x > 0 && y > 0;
+        H.postDelayed(() -> {
+            try {
+                Intent i = new Intent();
+                i.setClassName(OPEN_GRIND, OPEN_GRIND + ".MainActivity");
+                i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK
+                        | Intent.FLAG_ACTIVITY_REORDER_TO_FRONT);
+                ctx.startActivity(i);
+            } catch (Exception ignored) {
+            }
+        }, 250);
+        // Segundo intento: tocar el perfil una vez abierto
+        H.postDelayed(() -> {
+            LectorService s = instancia;
+            if (s == null) {
+                return;
+            }
+            AccessibilityNodeInfo r = s.obtenerRaiz();
+            if (r == null) {
+                return;
+            }
+            try {
+                if (hayCoords) {
+                    s.dispatchGesture(s.toque(x, y), null, null);
+                } else {
+                    AccessibilityNodeInfo fila = s.buscarFila(r, nombre);
+                    if (fila != null) {
+                        s.tocar(fila);
+                    }
+                }
+            } finally {
+                r.recycle();
+            }
+        }, 900);
+    }
+
     private static LectorService instancia;
 
     @Override

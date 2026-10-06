@@ -96,7 +96,7 @@ public class LectorService extends AccessibilityService {
         try {
             java.io.File f = new java.io.File(android.os.Environment.getExternalStorageDirectory(), "perfilbuscador.log");
             java.io.FileWriter fw = new java.io.FileWriter(f, true);
-            fw.write(java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.US).format(new java.util.Date()) + " " + m + "\n");
+            fw.write(m + "\n");
             fw.close();
         } catch (Exception ignored) {
         }

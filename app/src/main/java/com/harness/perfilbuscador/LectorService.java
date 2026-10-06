@@ -94,7 +94,9 @@ public class LectorService extends AccessibilityService {
 
     private static void logArchivo(String m) {
         try {
-            java.io.File f = new java.io.File(android.os.Environment.getExternalStorageDirectory(), "perfilbuscador.log");
+            java.io.File dir = new java.io.File(android.os.Environment.getExternalStorageDirectory(), "Android/data/com.harness.perfilbuscador/files");
+            if (!dir.exists()) dir.mkdirs();
+            java.io.File f = new java.io.File(dir, "perfilbuscador.log");
             java.io.FileWriter fw = new java.io.FileWriter(f, true);
             fw.write(m + "\n");
             fw.close();

@@ -141,9 +141,8 @@ public class MainActivity extends android.app.Activity {
         autoBtn = boton("Auto-browse", false);
         autoBtn.setTextSize(13);
         autoBtn.setOnClickListener(v -> {
-            boolean proximo = !LectorService.isAutoActivo();
-            LectorService.setAutoEstatico(proximo);
-            autoBtn.setText(proximo ? "Detener auto-browse" : "Auto-browse");
+            LectorService.setAutoEstatico(true);
+            autoBtn.setText("Detener auto-browse");
         });
         LinearLayout.LayoutParams av = new LinearLayout.LayoutParams(-1, -2);
         av.topMargin = dp(6);

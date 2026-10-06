@@ -37,9 +37,22 @@ public class MainActivity extends android.app.Activity {
     private EditText borrador;
     private LinearLayout lista;
     private Button irAOpenGrind;
+    private Button autoBtn;
 
+    /**
+     * Acumulado de todo lo visto. Open Grind solo muestra los perfiles del radio
+     * actual, unos 20-30 por pantalla; al desplazar se acumulan aqui para poder
+     * filtrar sobre el total y no solo sobre lo que se ve.
+     */
     private final List<LectorService.Perfil> todos = new ArrayList<>();
+    private final java.util.HashSet<String> vistos =
+            new java.util.HashSet<>();
     private List<String> filtros = new ArrayList<>();
+
+    /** Guardado para no perder el acumulado al rotar o volver desde segundo plano. */
+    private static final String PREFS = "acumulado";
+    private static final String CLAVE = "perfiles";
+    private static final int MAX_ACUMULADOS = 300;
 
     @Override
     protected void onCreate(Bundle b) {
@@ -117,6 +130,26 @@ public class MainActivity extends android.app.Activity {
         });
         raiz.addView(irAOpenGrind, new LinearLayout.LayoutParams(-1, -2));
 
+        Button vaciar = boton("Vaciar lista", false);
+        vaciar.setTextSize(13);
+        vaciar.setOnClickListener(v -> limpiar());
+        LinearLayout.LayoutParams mv = new LinearLayout.LayoutParams(-1, -2);
+        mv.topMargin = dp(6);
+        vaciar.setLayoutParams(mv);
+        raiz.addView(vaciar);
+
+        autoBtn = boton("Auto-browse", false);
+        autoBtn.setTextSize(13);
+        autoBtn.setOnClickListener(v -> {
+            boolean proximo = !LectorService.isAutoActivo();
+            LectorService.setAutoEstatico(proximo);
+            autoBtn.setText(proximo ? "Detener auto-browse" : "Auto-browse");
+        });
+        LinearLayout.LayoutParams av = new LinearLayout.LayoutParams(-1, -2);
+        av.topMargin = dp(6);
+        autoBtn.setLayoutParams(av);
+        raiz.addView(autoBtn);
+
         lista = new LinearLayout(this);
         lista.setOrientation(LinearLayout.VERTICAL);
         ScrollView scroll = new ScrollView(this);
@@ -130,17 +163,56 @@ public class MainActivity extends android.app.Activity {
         raiz.addView(estado);
 
         setContentView(raiz);
+        recuperar();
 
-        LectorService.escucha = new LectorService.Escucha() {
-            @Override
-            public void onPerfiles(List<LectorService.Perfil> nuevos) {
-                runOnUiThread(() -> {
-                    todos.clear();
-                    todos.addAll(nuevos);
-                    aplicarFiltros();
-                });
+        LectorService.escucha = listener;
+    }
+
+    private static String claveDe(LectorService.Perfil p) {
+        return p.nombre.toLowerCase() + "@" + p.distancia;
+    }
+
+    @SuppressWarnings("unchecked")
+    private void recuperar() {
+        try {
+            String raw = getSharedPreferences(PREFS, MODE_PRIVATE).getString(CLAVE, "");
+            if (raw == null || raw.isEmpty()) {
+                return;
             }
-        };
+            org.json.JSONArray arr = new org.json.JSONArray(raw);
+            for (int i = 0; i < arr.length(); i++) {
+                org.json.JSONObject o = arr.getJSONObject(i);
+                LectorService.Perfil p = new LectorService.Perfil(
+                        o.optString("d"), o.optString("n"),
+                        o.optInt("x"), o.optInt("y"));
+                todos.add(p);
+                vistos.add(claveDe(p));
+            }
+        } catch (Exception ignored) {
+        }
+    }
+
+    private void guardar() {
+        try {
+            org.json.JSONArray arr = new org.json.JSONArray();
+            for (LectorService.Perfil p : todos) {
+                org.json.JSONObject o = new org.json.JSONObject();
+                o.put("d", p.distancia);
+                o.put("n", p.nombre);
+                o.put("x", p.x);
+                o.put("y", p.y);
+                arr.put(o);
+            }
+            getSharedPreferences(PREFS, MODE_PRIVATE)
+                    .edit().putString(CLAVE, arr.toString()).apply();
+        } catch (Exception ignored) {
+        }
+    }
+
+    @Override
+    protected void onPause() {
+        super.onPause();
+        guardar();
     }
 
     @Override
@@ -152,6 +224,50 @@ public class MainActivity extends android.app.Activity {
                 : "⚠ Activa el lector en Ajustes → Accesibilidad");
         estado.setTextColor(Color.parseColor(activo ? "#4ade80" : "#f87171"));
     }
+
+    /**
+     * LectorService.escucha es un campo estatico: si la Activity se destruye sin
+     * soltarlo, el servicio sigue llamando runOnUiThread sobre una ventana que ya
+     * no existe y el proceso muere con IllegalStateException.
+     */
+    @Override
+    protected void onDestroy() {
+        if (LectorService.escucha == listener) {
+            LectorService.escucha = null;
+        }
+        super.onDestroy();
+    }
+
+    private final LectorService.Escucha listener = new LectorService.Escucha() {
+        @Override
+        public void onPerfiles(List<LectorService.Perfil> nuevos) {
+            runOnUiThread(() -> {
+                for (LectorService.Perfil p : nuevos) {
+                    if (vistos.add(claveDe(p))) {
+                        todos.add(p);
+                    }
+                }
+                while (todos.size() > MAX_ACUMULADOS) {
+                    vistos.remove(claveDe(todos.get(0)));
+                    todos.remove(0);
+                }
+                guardar();
+                aplicarFiltros();
+            });
+        }
+
+        @Override
+        public void onAutoBrowse(boolean activo, int swipes) {
+            runOnUiThread(() -> {
+                if (estado != null) {
+                    estado.setText(activo
+                            ? "Auto-browse activo: " + swipes + " swipes"
+                            : "Auto-browse detenido en swipe " + swipes);
+                    estado.setTextColor(Color.parseColor(activo ? "#4ade80" : "#f87171"));
+                }
+            });
+        }
+    };
 
     private boolean enabledService() {
         try {
@@ -182,12 +298,17 @@ public class MainActivity extends android.app.Activity {
             lista.addView(fila(p));
         }
         if (todos.isEmpty()) {
-            lista.addView(texto("Sin perfiles leídos todavía.\nAbre Open Grind y desliza "
-                    + "para que aparezca la lista.", 14, Color.parseColor("#8a8a8a"), false));
+            lista.addView(texto("Sin perfiles todavía.\nAbre Open Grind y desliza la "
+                    + "cuadrícula: se irán acumulando aquí para poder filtrar.",
+                    14, Color.parseColor("#8a8a8a"), false));
         }
-        resumen.setText(filtros.isEmpty()
-                ? todos.size() + " perfiles en pantalla"
-                : mostrados + " de " + todos.size() + " coinciden con «" + crudo.trim() + "»");
+        int total = todos.size();
+        if (filtros.isEmpty()) {
+            resumen.setText(total + " perfiles acumulados — desliza Open Grind para sumar más");
+        } else {
+            resumen.setText(mostrados + " de " + total + " coinciden con «"
+                    + crudo.trim() + "»");
+        }
     }
 
     private View fila(LectorService.Perfil p) {
@@ -266,6 +387,15 @@ public class MainActivity extends android.app.Activity {
         b.setBackgroundColor(primario ? Color.parseColor("#5ac8fa") : Color.parseColor("#1f3b47"));
         b.setAllCaps(false);
         return b;
+    }
+
+    /** Vacía el acumulado y deja la lista como estaba al empezar. */
+    private void limpiar() {
+        todos.clear();
+        vistos.clear();
+        guardar();
+        aplicarFiltros();
+        Toast.makeText(this, "Lista vaciada", Toast.LENGTH_SHORT).show();
     }
 
     private int dp(int v) {

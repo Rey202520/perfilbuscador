@@ -148,11 +148,11 @@ public class LectorService extends AccessibilityService {
 
     public static void abrirPerfil(Context ctx, String nombre, int x, int y) {
         log("abrirPerfil " + nombre + " en " + x + "," + y);
-        logArchivo("abrirPerfil " + nombre + " en " + x + "," + y);
+        logArchivo("INICIO abrirPerfil nombre=" + nombre + " coords=" + x + "," + y);
         if (ctx == null) {
+            logArchivo("ERROR ctx null");
             return;
         }
-        // Mostrar toast para confirmar que se ejecuta
         try {
             android.widget.Toast.makeText(ctx, "Abriendo perfil: " + nombre, android.widget.Toast.LENGTH_SHORT).show();
         } catch (Exception ignored) {
